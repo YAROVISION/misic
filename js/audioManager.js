@@ -1,21 +1,22 @@
 /**
  * AUDIO MANAGER & BEAT DETECTOR ENGINE
- * Handles Web Audio API, AnalyserNode, frequency bands, beat detection, and playlist management.
+ * Powered by HTML5 Audio streaming + Web Audio API AnalyserNode.
+ * Guarantees zero-latency streaming on Mobile (iOS / Android) & Desktop,
+ * real-time frequency analysis and 3D visualizer beat reactivity.
  */
 
 export class AudioManager {
     constructor() {
         this.ctx = null;
         this.analyser = null;
-        this.sourceNode = null;
         this.gainNode = null;
         this.mediaStreamDest = null;
+        this.audioElement = null;
+        this.mediaElementSource = null;
 
         this.playlist = [];
         this.currentIndex = 0;
         this.isPlaying = false;
-        this.startTime = 0;
-        this.pauseOffset = 0;
         this.duration = 0;
 
         // Frequency analysis
@@ -41,10 +42,62 @@ export class AudioManager {
         this.onBeat = null;
 
         this.initDemoTracks();
+        this.initAudioElement();
+    }
+
+    initAudioElement() {
+        if (this.audioElement) return;
+        this.audioElement = document.getElementById('audioElement');
+        if (!this.audioElement) {
+            this.audioElement = new Audio();
+            this.audioElement.id = 'audioElement';
+            document.body.appendChild(this.audioElement);
+        }
+
+        this.audioElement.preload = 'auto';
+        this.audioElement.crossOrigin = 'anonymous';
+        this.audioElement.setAttribute('playsinline', '');
+        this.audioElement.setAttribute('webkit-playsinline', '');
+
+        this.audioElement.addEventListener('timeupdate', () => {
+            if (this.onTimeUpdate) {
+                this.onTimeUpdate(this.getCurrentTime(), this.getDuration());
+            }
+        });
+
+        this.audioElement.addEventListener('loadedmetadata', () => {
+            this.duration = this.audioElement.duration || 0;
+            if (this.playlist[this.currentIndex]) {
+                this.playlist[this.currentIndex].duration = this.duration;
+            }
+            if (this.onTimeUpdate) {
+                this.onTimeUpdate(this.getCurrentTime(), this.duration);
+            }
+        });
+
+        this.audioElement.addEventListener('ended', () => {
+            this.next();
+        });
+
+        this.audioElement.addEventListener('play', () => {
+            this.isPlaying = true;
+            if (this.onPlayStateChange) this.onPlayStateChange(true);
+        });
+
+        this.audioElement.addEventListener('pause', () => {
+            this.isPlaying = false;
+            if (this.onPlayStateChange) this.onPlayStateChange(false);
+        });
+
+        this.audioElement.addEventListener('error', (e) => {
+            console.warn('Audio element error:', e);
+        });
     }
 
     init() {
+        this.initAudioElement();
         if (this.ctx) return;
+
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         this.ctx = new AudioCtx();
 
@@ -57,7 +110,14 @@ export class AudioManager {
 
         this.mediaStreamDest = this.ctx.createMediaStreamDestination();
 
-        // Connect chain: analyser -> gain -> [destination & mediaStreamDest]
+        // Connect mediaElementSource -> analyser -> gainNode -> [destination & mediaStreamDest]
+        try {
+            this.mediaElementSource = this.ctx.createMediaElementSource(this.audioElement);
+            this.mediaElementSource.connect(this.analyser);
+        } catch (e) {
+            console.warn('createMediaElementSource note:', e);
+        }
+
         this.analyser.connect(this.gainNode);
         this.gainNode.connect(this.ctx.destination);
         if (this.mediaStreamDest) {
@@ -72,26 +132,14 @@ export class AudioManager {
      * Unlock Web Audio context for mobile devices (iOS Safari / Android Chrome)
      */
     unlockAudio() {
-        if (!this.ctx) {
-            this.init();
-        }
-        if (this.ctx) {
-            if (this.ctx.state === 'suspended') {
-                this.ctx.resume().catch(() => {});
-            }
-            // Silent 1-frame tick to permanently unlock iOS Web Audio pipeline
-            try {
-                const buffer = this.ctx.createBuffer(1, 1, 22050);
-                const source = this.ctx.createBufferSource();
-                source.buffer = buffer;
-                source.connect(this.ctx.destination);
-                source.start(0);
-            } catch (e) {}
+        this.init();
+        if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
         }
     }
 
     /**
-     * Set up default playlist with all files from audio/ folder
+     * Default playlist with direct local paths
      */
     initDemoTracks() {
         this.playlist = [
@@ -99,50 +147,41 @@ export class AudioManager {
                 id: 'track-dj-vtch',
                 title: 'Король Своєї Долі',
                 artist: 'Dj Vtch',
-                url: 'audio/Dj Vtch Король Своєї Долі.mp3',
-                isProcedural: false
+                url: 'audio/Dj Vtch Король Своєї Долі.mp3'
             },
             {
                 id: 'track-alan-walker',
                 title: 'Faded',
                 artist: 'Alan Walker',
-                url: 'audio/1760090903_alan-walker-faded.mp3',
-                isProcedural: false
+                url: 'audio/1760090903_alan-walker-faded.mp3'
             },
             {
                 id: 'track-cut-off',
                 title: 'Lonely',
                 artist: 'Cut Off',
-                url: 'audio/1763640907_cut-off-lonely.mp3',
-                isProcedural: false
+                url: 'audio/1763640907_cut-off-lonely.mp3'
             },
             {
                 id: 'track-iyeoka',
                 title: 'Simply Falling',
                 artist: 'Iyeoka',
-                url: 'audio/Iyeoka - Simply Falling.mp3',
-                isProcedural: false
+                url: 'audio/Iyeoka - Simply Falling.mp3'
             },
             {
                 id: 'track-acdc',
                 title: 'Thunderstruck',
                 artist: 'AC/DC',
-                url: 'audio/acdc_-_thunderstruck.mp3',
-                isProcedural: false
+                url: 'audio/acdc_-_thunderstruck.mp3'
             },
             {
                 id: 'track-bad-boys-blue',
                 title: "You're a Woman",
                 artist: 'Bad Boys Blue',
-                url: "audio/bad_boys_blue_-_youre_a_woman_-_80-e_(z3.fm).mp3",
-                isProcedural: false
+                url: "audio/bad_boys_blue_-_youre_a_woman_-_80-e_(z3.fm).mp3"
             }
         ];
     }
 
-    /**
-     * Remove a track from the playlist by index
-     */
     removeTrack(index) {
         if (index < 0 || index >= this.playlist.length) return null;
 
@@ -152,9 +191,8 @@ export class AudioManager {
 
         if (this.playlist.length === 0) {
             this.pause();
-            this.currentBuffer = null;
+            if (this.audioElement) this.audioElement.src = '';
             this.duration = 0;
-            this.pauseOffset = 0;
             this.currentIndex = 0;
             if (this.onTrackChange) {
                 this.onTrackChange({ title: 'Плейлист порожній', artist: 'Додайте аудіофайли' }, 0);
@@ -167,8 +205,6 @@ export class AudioManager {
             this.currentIndex--;
         } else if (isCurrent) {
             this.pause();
-            this.currentBuffer = null;
-            this.pauseOffset = 0;
             if (this.currentIndex >= this.playlist.length) {
                 this.currentIndex = 0;
             }
@@ -180,152 +216,20 @@ export class AudioManager {
         return removedTrack;
     }
 
-    async generateProceduralBuffer(track) {
-        this.init();
-        const sampleRate = this.ctx.sampleRate;
-        const totalSeconds = track.duration;
-        const totalSamples = sampleRate * totalSeconds;
-        const buffer = this.ctx.createBuffer(2, totalSamples, sampleRate);
-        const left = buffer.getChannelData(0);
-        const right = buffer.getChannelData(1);
-
-        const bpm = track.bpm || 128;
-        const beatSec = 60 / bpm;
-        const subBeat = beatSec / 4;
-
-        // Chords progression: Am - F - C - G
-        const chordFrequencies = [
-            [220, 261.63, 329.63, 440], // Am
-            [174.61, 220, 261.63, 349.23], // F
-            [261.63, 329.63, 392, 523.25], // C
-            [196, 246.94, 293.66, 392]  // G
-        ];
-
-        for (let i = 0; i < totalSamples; i++) {
-            const t = i / sampleRate;
-            const currentBeat = t / beatSec;
-            const measure = Math.floor(currentBeat / 4);
-            const chordIdx = measure % chordFrequencies.length;
-            const chord = chordFrequencies[chordIdx];
-
-            let sampleL = 0;
-            let sampleR = 0;
-
-            // 1. Kick Drum (Every beat)
-            const beatFrac = (t % beatSec) / beatSec;
-            if (beatFrac < 0.3) {
-                const kickEnv = Math.exp(-beatFrac * 22);
-                const kickFreq = 150 * Math.exp(-beatFrac * 35) + 45;
-                const kick = Math.sin(2 * Math.PI * kickFreq * beatFrac * beatSec) * kickEnv * 0.9;
-                sampleL += kick;
-                sampleR += kick;
-            }
-
-            // 2. Snare / Clang (On beats 2 and 4)
-            const snareBeat = (currentBeat % 2);
-            if (snareBeat > 1.0 && snareBeat < 1.35) {
-                const snareFrac = snareBeat - 1.0;
-                const snareEnv = Math.exp(-snareFrac * 14);
-                const noise = (Math.random() * 2 - 1) * snareEnv * 0.45;
-                const tone = Math.sin(2 * Math.PI * 220 * snareFrac * beatSec) * snareEnv * 0.3;
-                sampleL += noise + tone;
-                sampleR += noise + tone;
-            }
-
-            // 3. Hi-Hats (Off-beats 16th notes)
-            const hatFrac = (t % (subBeat * 2)) / (subBeat * 2);
-            if (hatFrac < 0.15) {
-                const hatEnv = Math.exp(-hatFrac * 40);
-                const hatNoise = (Math.random() * 2 - 1) * hatEnv * 0.18;
-                sampleL += hatNoise * 0.8;
-                sampleR += hatNoise * 1.2;
-            }
-
-            // 4. Bassline (Punchy rolling 16th notes)
-            const subBeatIdx = Math.floor(t / subBeat);
-            const subFrac = (t % subBeat) / subBeat;
-            const bassEnv = Math.exp(-subFrac * 8);
-            const rootFreq = chord[0] * 0.5; // 1 octave down
-            const bassNote = (subBeatIdx % 2 === 0) ? rootFreq : rootFreq * 1.5;
-            const bass = Math.sin(2 * Math.PI * bassNote * t) * bassEnv * 0.42;
-            sampleL += bass;
-            sampleR += bass;
-
-            // 5. Arpeggiator Lead Synth
-            const arpIdx = Math.floor(t / subBeat) % chord.length;
-            const arpFreq = chord[arpIdx] * 2;
-            const arpEnv = Math.exp(-subFrac * 6);
-            const lead = (Math.sin(2 * Math.PI * arpFreq * t) + 0.3 * Math.sin(4 * Math.PI * arpFreq * t)) * arpEnv * 0.18;
-            sampleL += lead * 0.7;
-            sampleR += lead * 1.1;
-
-            // 6. Stereo Pad / Ambient Chord
-            let pad = 0;
-            for (let c = 0; c < chord.length; c++) {
-                pad += Math.sin(2 * Math.PI * chord[c] * t + c * 0.5) * 0.04;
-            }
-            sampleL += pad;
-            sampleR += pad;
-
-            // Master clamp & soft limiting
-            left[i] = Math.tanh(sampleL * 0.85);
-            right[i] = Math.tanh(sampleR * 0.85);
-        }
-
-        track.audioBuffer = buffer;
-        return buffer;
-    }
-
     async loadTrack(index) {
         if (index < 0 || index >= this.playlist.length) return;
-        this.init();
-
-        if (this.sourceNode) {
-            try { this.sourceNode.stop(); } catch (e) {}
-            this.sourceNode.disconnect();
-            this.sourceNode = null;
-        }
+        this.initAudioElement();
 
         this.currentIndex = index;
         const track = this.playlist[index];
 
-        if (!track.audioBuffer) {
-            if (track.url) {
-                try {
-                    let response = await fetch(encodeURI(track.url));
-                    if (!response.ok) {
-                        response = await fetch(track.url);
-                    }
-                    const arrayBuffer = await response.arrayBuffer();
-                    track.audioBuffer = await new Promise((resolve, reject) => {
-                        this.ctx.decodeAudioData(arrayBuffer, resolve, (err) => {
-                            console.warn('decodeAudioData fallback error:', err);
-                            reject(err);
-                        });
-                    });
-                    track.duration = track.audioBuffer.duration;
-                } catch (err) {
-                    console.error('Failed to load track by URL:', err);
-                }
-            } else if (track.isProcedural) {
-                await this.generateProceduralBuffer(track);
-            } else if (track.file) {
-                try {
-                    const arrayBuffer = await track.file.arrayBuffer();
-                    track.audioBuffer = await new Promise((resolve, reject) => {
-                        this.ctx.decodeAudioData(arrayBuffer, resolve, reject);
-                    });
-                    track.duration = track.audioBuffer.duration;
-                } catch (err) {
-                    console.error('Failed to decode file:', err);
-                }
-            }
+        if (track.file) {
+            this.audioElement.src = URL.createObjectURL(track.file);
+        } else if (track.url) {
+            this.audioElement.src = encodeURI(track.url);
         }
 
-        if (track.audioBuffer) {
-            this.duration = track.audioBuffer.duration;
-        }
-        this.pauseOffset = 0;
+        this.audioElement.load();
 
         if (this.onTrackChange) this.onTrackChange(track, index);
     }
@@ -336,49 +240,26 @@ export class AudioManager {
         const track = this.playlist[this.currentIndex];
         if (!track) return;
 
-        if (!track.audioBuffer) {
+        if (!this.audioElement.src || this.audioElement.src === '' || this.audioElement.src === window.location.href) {
             await this.loadTrack(this.currentIndex);
         }
 
-        if (!track.audioBuffer) {
-            console.warn('Cannot play: audioBuffer is missing');
-            return;
-        }
-
-        if (this.sourceNode) {
-            try { this.sourceNode.stop(); } catch (e) {}
-            this.sourceNode.disconnect();
-            this.sourceNode = null;
-        }
-
-        if (this.ctx.state === 'suspended') {
+        if (this.ctx && this.ctx.state === 'suspended') {
             await this.ctx.resume();
         }
 
-        this.sourceNode = this.ctx.createBufferSource();
-        this.sourceNode.buffer = track.audioBuffer;
-        this.sourceNode.connect(this.analyser);
-
-        this.sourceNode.onended = () => {
-            if (this.isPlaying && this.getCurrentTime() >= this.duration - 0.5) {
-                this.next();
-            }
-        };
-
-        this.startTime = this.ctx.currentTime - this.pauseOffset;
-        this.sourceNode.start(0, this.pauseOffset);
-        this.isPlaying = true;
-
-        if (this.onPlayStateChange) this.onPlayStateChange(true);
+        try {
+            await this.audioElement.play();
+            this.isPlaying = true;
+            if (this.onPlayStateChange) this.onPlayStateChange(true);
+        } catch (err) {
+            console.warn('Audio play request prevented or pending user interaction:', err);
+        }
     }
 
     pause() {
-        if (!this.isPlaying) return;
-        if (this.sourceNode) {
-            this.pauseOffset = this.ctx.currentTime - this.startTime;
-            try { this.sourceNode.stop(); } catch (e) {}
-            this.sourceNode.disconnect();
-            this.sourceNode = null;
+        if (this.audioElement) {
+            this.audioElement.pause();
         }
         this.isPlaying = false;
         if (this.onPlayStateChange) this.onPlayStateChange(false);
@@ -393,18 +274,19 @@ export class AudioManager {
     }
 
     seek(timeSeconds) {
-        const clamped = Math.max(0, Math.min(timeSeconds, this.duration));
-        this.pauseOffset = clamped;
-        if (this.isPlaying) {
-            this.play();
-        } else {
-            if (this.onTimeUpdate) this.onTimeUpdate(this.pauseOffset, this.duration);
-        }
+        if (!this.audioElement) return;
+        const dur = this.getDuration();
+        const clamped = Math.max(0, Math.min(timeSeconds, dur > 0 ? dur : timeSeconds));
+        this.audioElement.currentTime = clamped;
+        if (this.onTimeUpdate) this.onTimeUpdate(clamped, dur);
     }
 
     setVolume(val) {
         if (this.gainNode) {
             this.gainNode.gain.setValueAtTime(val, this.ctx?.currentTime || 0);
+        }
+        if (this.audioElement) {
+            this.audioElement.volume = Math.max(0, Math.min(1, val));
         }
     }
 
@@ -427,13 +309,19 @@ export class AudioManager {
     }
 
     getCurrentTime() {
-        if (!this.isPlaying) return this.pauseOffset;
-        return Math.min(this.duration, Math.max(0, this.ctx.currentTime - this.startTime));
+        return this.audioElement ? this.audioElement.currentTime : 0;
     }
 
-    /**
-     * Add user uploaded audio files to playlist
-     */
+    getDuration() {
+        if (this.audioElement && this.audioElement.duration && !isNaN(this.audioElement.duration)) {
+            return this.audioElement.duration;
+        }
+        if (this.playlist[this.currentIndex] && this.playlist[this.currentIndex].duration) {
+            return this.playlist[this.currentIndex].duration;
+        }
+        return 0;
+    }
+
     async addFiles(files) {
         const newTracks = [];
         for (let i = 0; i < files.length; i++) {
@@ -444,14 +332,12 @@ export class AudioManager {
                 title: name,
                 artist: 'Uploaded Track',
                 duration: 0,
-                file: file,
-                isProcedural: false
+                file: file
             };
             this.playlist.push(track);
             newTracks.push(track);
         }
 
-        // If currently stopped, load the first newly added track
         if (!this.isPlaying && this.playlist.length === newTracks.length) {
             await this.loadTrack(0);
         }
@@ -475,10 +361,6 @@ export class AudioManager {
         this.analyser.getByteTimeDomainData(this.timeDomainData);
 
         const binCount = this.frequencyData.length;
-        // Bins roughly: 0..binCount-1 -> 0..22050Hz
-        // Bass: ~20Hz - 250Hz (bins ~ 1 to 6)
-        // Mid: ~250Hz - 2500Hz (bins ~ 7 to 55)
-        // High: ~2500Hz - 16000Hz (bins ~ 56 to 200)
         let bassSum = 0, bassCount = 0;
         let midSum = 0, midCount = 0;
         let highSum = 0, highCount = 0;
@@ -529,10 +411,6 @@ export class AudioManager {
                 this.beatHoldFrames = 8; // hold for ~130ms to avoid retriggering on same transient
                 if (this.onBeat) this.onBeat({ bass: instantBass, overall: instantOverall });
             }
-        }
-
-        if (this.onTimeUpdate) {
-            this.onTimeUpdate(this.getCurrentTime(), this.duration);
         }
     }
 }
