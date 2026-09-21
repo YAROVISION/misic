@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>НАСОЛОДА</title>
+    <!-- Neon Dot Favicon -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Three.js and Addons via Importmap -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.174.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.174.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <!-- Background Ambient Glow -->
+    <div class="ambient-glow" id="ambientGlow"></div>
+
+    <!-- Top Left Brand & Status -->
+    <header id="top-bar">
+        <div class="brand">
+            <div class="brand-orb" id="brandOrb"></div>
+            <span class="brand-title">НАСОЛОДА</span>
+        </div>
+        
+        <div class="top-actions">
+            <!-- Scene Mode Switcher (Round Button & Clean Dropdown) -->
+            <div class="scene-popover-wrapper">
+                <button id="btnSceneToggle" class="glass-btn round-btn" title="Вибір режиму сцени">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                </button>
+                <div id="sceneDropdown" class="glass-popover scene-popover">
+                    <div class="scene-opt-item active" data-mode="auto">Автоматично</div>
+                    <div class="scene-opt-item" data-mode="galaxy">Galaxy Warp</div>
+                    <div class="scene-opt-item" data-mode="universe">Universe Nebula</div>
+                    <div class="scene-opt-item" data-mode="vortex">Cyber Sound Vortex</div>
+                    <div class="scene-opt-item" data-mode="artwork">Pulsing Artwork</div>
+                </div>
+            </div>
+
+            <!-- Upload Artwork Button (Round Glass Button with Cyan Dot) -->
+            <button id="btnArtworkUpload" class="glass-btn round-btn" title="Завантажити логотип / арт">
+                <span class="art-dot"></span>
+            </button>
+            <input type="file" id="artworkInput" accept="image/*" style="display: none;">
+
+            <!-- Record Video Button (Round Glass Button with Recording Dot) -->
+            <button id="btnRecord" class="glass-btn round-btn record-btn" title="Записати відео (60 FPS)">
+                <span class="rec-dot"></span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Center Watermark / Scene Transition Flash -->
+    <div id="transitionOverlay" class="transition-overlay"></div>
+    <div id="sceneBadge" class="scene-badge">GALAXY WARP</div>
+
+    <!-- Center Screen Tap Play/Pause Indicator -->
+    <div id="tapFeedback" class="tap-feedback">
+        <div class="tap-icon-inner" id="tapIconInner">
+            <svg id="tapPlaySvg" width="36" height="36" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+            <svg id="tapPauseSvg" width="36" height="36" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+        </div>
+    </div>
+
+    <!-- Bottom Floating Music Player HUD -->
+    <footer id="player-hud" class="glass-hud">
+        <!-- Progress Bar & Timeline -->
+        <div class="timeline-container">
+            <span id="timeCurrent" class="time-text">00:00</span>
+            <div class="seek-bar-wrapper" id="seekBarWrapper">
+                <div class="seek-bar-bg"></div>
+                <div class="seek-bar-buffered" id="seekBuffered"></div>
+                <div class="seek-bar-fill" id="seekFill"></div>
+                <div class="seek-bar-handle" id="seekHandle"></div>
+            </div>
+            <span id="timeTotal" class="time-text">00:00</span>
+        </div>
+
+        <!-- Player Controls Row -->
+        <div class="controls-row">
+            <!-- Left: Current Track Info -->
+            <div class="track-info">
+                <div class="track-cover" id="hudTrackCover">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                </div>
+                <div class="track-meta">
+                    <div class="track-name" id="hudTrackName">Король Своєї Долі</div>
+                    <div class="track-artist" id="hudTrackArtist">Dj Vtch</div>
+                </div>
+            </div>
+
+            <!-- Center: Playback Buttons -->
+            <div class="main-buttons">
+                <button id="btnPrev" class="ctrl-btn" title="Попередній трек (Left Arrow)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2"/></svg>
+                </button>
+                <button id="btnPlay" class="ctrl-btn play-btn" title="Старт / Пауза (Space)">
+                    <svg id="playIcon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg id="pauseIcon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                </button>
+                <button id="btnNext" class="ctrl-btn" title="Наступний трек (Right Arrow)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2"/></svg>
+                </button>
+            </div>
+
+            <!-- Right: Volume, Playlist & Fullscreen -->
+            <div class="utility-buttons">
+                <!-- Live Beat Visualizer Meter -->
+                <div class="beat-meter" title="Рівень басу / Rhythm Pulse">
+                    <div class="meter-bar" id="meterBass"></div>
+                    <div class="meter-bar" id="meterMid"></div>
+                    <div class="meter-bar" id="meterHigh"></div>
+                </div>
+
+                <!-- Volume -->
+                <div class="volume-container">
+                    <button id="btnMute" class="ctrl-btn sub-btn" title="Вимкнути звук">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                    </button>
+                    <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.8" class="vol-slider" title="Гучність">
+                </div>
+
+                <!-- Open Playlist Button & Dropdown Popover Menu -->
+                <div class="playlist-popover-container">
+                    <button id="btnPlaylistToggle" class="ctrl-btn sub-btn with-badge" title="Відкрити Плейлист">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                        <span class="badge" id="playlistCountBadge">1</span>
+                    </button>
+
+                    <!-- Liquid Glass Dropdown Popover Menu -->
+                    <div id="playlistDropdown" class="playlist-dropdown">
+                        <div class="dropdown-header">
+                            <div class="dropdown-title">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                                <span>Плейлист</span>
+                            </div>
+                            <button id="btnClosePlaylist" class="close-pop-btn" title="Закрити">&times;</button>
+                        </div>
+
+                        <!-- Drop & Upload Area -->
+                        <div class="drop-zone-mini" id="dropZone">
+                            <input type="file" id="audioFileInput" accept="audio/*" multiple style="display: none;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <span>+ Додати треки (MP3/WAV)</span>
+                        </div>
+
+                        <!-- Track List -->
+                        <div class="track-list-dropdown" id="trackList">
+                            <!-- Dynamic playlist items injected by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fullscreen -->
+                <button id="btnFullscreen" class="ctrl-btn sub-btn" title="Повноекранний режим (F)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                </button>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Video Recording Status Overlay -->
+    <div id="recordingModal" class="recording-modal">
+        <div class="recording-card">
+            <div class="pulse-ring"></div>
+            <div class="rec-title">Йде запис відеокліпу...</div>
+            <div class="rec-timer" id="recTimerDisplay">00:00</div>
+            <p class="rec-sub">Захоплення 60 FPS WebGL відео з аудіорядом</p>
+            <button id="btnStopRecord" class="glass-btn danger-btn">Зупинити та зберегти відео</button>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">Повідомлення</div>
+
+    <!-- Scripts -->
+    <script type="module" src="js/audioManager.js"></script>
+    <script type="module" src="js/sceneManager.js"></script>
+    <script type="module" src="js/recorder.js"></script>
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
