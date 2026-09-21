@@ -1285,10 +1285,23 @@ canvas {
         min-width: 0;
         flex-shrink: 0;
         gap: 6px;
+        align-items: center;
     }
 
     .volume-container {
-        display: none; /* Mobile has hardware volume buttons */
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .vol-slider {
+        width: 44px;
+        height: 5px;
+    }
+
+    .vol-slider::-webkit-slider-thumb {
+        width: 14px;
+        height: 14px;
     }
 
     .beat-meter {

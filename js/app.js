@@ -21,6 +21,9 @@ class App {
         this.bindEvents();
         this.renderPlaylist();
 
+        // Preload initial track for instant playback on mobile
+        this.audio.loadTrack(0);
+
         // Start render loop
         this.animate = this.animate.bind(this);
         requestAnimationFrame(this.animate);
@@ -189,12 +192,15 @@ class App {
             }
         });
 
-        // Auto-resume audio on first user touch anywhere (mobile browser requirement)
-        window.addEventListener('touchstart', () => {
-            if (this.audio && this.audio.ctx && this.audio.ctx.state === 'suspended') {
-                this.audio.ctx.resume();
+        // Auto-unlock audio engine on first user interaction anywhere (mobile browser requirement)
+        const unlockHandler = () => {
+            if (this.audio) {
+                this.audio.unlockAudio();
             }
-        }, { once: true });
+        };
+        ['touchstart', 'touchend', 'pointerdown', 'click'].forEach(evt => {
+            window.addEventListener(evt, unlockHandler, { once: true, passive: true });
+        });
 
         // 4. Volume
         this.volumeSlider.addEventListener('input', (e) => {

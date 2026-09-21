@@ -57,13 +57,37 @@ export class AudioManager {
 
         this.mediaStreamDest = this.ctx.createMediaStreamDestination();
 
-        // Connect chain: source -> analyser -> gain -> [destination & mediaStreamDest]
-        this.gainNode.connect(this.ctx.destination);
-        this.gainNode.connect(this.mediaStreamDest);
+        // Connect chain: analyser -> gain -> [destination & mediaStreamDest]
         this.analyser.connect(this.gainNode);
+        this.gainNode.connect(this.ctx.destination);
+        if (this.mediaStreamDest) {
+            this.gainNode.connect(this.mediaStreamDest);
+        }
 
         this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
         this.timeDomainData = new Uint8Array(this.analyser.frequencyBinCount);
+    }
+
+    /**
+     * Unlock Web Audio context for mobile devices (iOS Safari / Android Chrome)
+     */
+    unlockAudio() {
+        if (!this.ctx) {
+            this.init();
+        }
+        if (this.ctx) {
+            if (this.ctx.state === 'suspended') {
+                this.ctx.resume().catch(() => {});
+            }
+            // Silent 1-frame tick to permanently unlock iOS Web Audio pipeline
+            try {
+                const buffer = this.ctx.createBuffer(1, 1, 22050);
+                const source = this.ctx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(this.ctx.destination);
+                source.start(0);
+            } catch (e) {}
+        }
     }
 
     /**
@@ -268,9 +292,17 @@ export class AudioManager {
         if (!track.audioBuffer) {
             if (track.url) {
                 try {
-                    const response = await fetch(encodeURI(track.url));
+                    let response = await fetch(encodeURI(track.url));
+                    if (!response.ok) {
+                        response = await fetch(track.url);
+                    }
                     const arrayBuffer = await response.arrayBuffer();
-                    track.audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
+                    track.audioBuffer = await new Promise((resolve, reject) => {
+                        this.ctx.decodeAudioData(arrayBuffer, resolve, (err) => {
+                            console.warn('decodeAudioData fallback error:', err);
+                            reject(err);
+                        });
+                    });
                     track.duration = track.audioBuffer.duration;
                 } catch (err) {
                     console.error('Failed to load track by URL:', err);
@@ -278,9 +310,15 @@ export class AudioManager {
             } else if (track.isProcedural) {
                 await this.generateProceduralBuffer(track);
             } else if (track.file) {
-                const arrayBuffer = await track.file.arrayBuffer();
-                track.audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
-                track.duration = track.audioBuffer.duration;
+                try {
+                    const arrayBuffer = await track.file.arrayBuffer();
+                    track.audioBuffer = await new Promise((resolve, reject) => {
+                        this.ctx.decodeAudioData(arrayBuffer, resolve, reject);
+                    });
+                    track.duration = track.audioBuffer.duration;
+                } catch (err) {
+                    console.error('Failed to decode file:', err);
+                }
             }
         }
 
@@ -293,19 +331,28 @@ export class AudioManager {
     }
 
     async play() {
-        this.init();
-        if (this.ctx.state === 'suspended') {
-            await this.ctx.resume();
-        }
+        this.unlockAudio();
 
         const track = this.playlist[this.currentIndex];
+        if (!track) return;
+
         if (!track.audioBuffer) {
             await this.loadTrack(this.currentIndex);
+        }
+
+        if (!track.audioBuffer) {
+            console.warn('Cannot play: audioBuffer is missing');
+            return;
         }
 
         if (this.sourceNode) {
             try { this.sourceNode.stop(); } catch (e) {}
             this.sourceNode.disconnect();
+            this.sourceNode = null;
+        }
+
+        if (this.ctx.state === 'suspended') {
+            await this.ctx.resume();
         }
 
         this.sourceNode = this.ctx.createBufferSource();
