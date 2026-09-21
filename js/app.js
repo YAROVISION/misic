@@ -335,13 +335,15 @@ class App {
         });
 
         // 10. Fullscreen Toggle
-        this.btnFullscreen.addEventListener('click', () => {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(() => {});
-            } else {
-                document.exitFullscreen().catch(() => {});
-            }
-        });
+        if (this.btnFullscreen) {
+            this.btnFullscreen.addEventListener('click', () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(() => {});
+                } else {
+                    document.exitFullscreen().catch(() => {});
+                }
+            });
+        }
 
         // 11. Keyboard Shortcuts
         window.addEventListener('keydown', (e) => {
